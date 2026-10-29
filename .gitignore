@@ -1,0 +1,5 @@
+# Large generated media: do not commit
+incoming/*
+!incoming/.gitkeep
+origin/www/video/*
+!origin/www/video/.gitkeep
