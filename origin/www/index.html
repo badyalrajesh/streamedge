@@ -4,6 +4,10 @@
 <body>
   <h1>StreamEdge</h1>
   <video id="v" controls width="640"></video>
+  <p>
+    <button id="chk">Check cache for segment 0</button>
+    <span id="out"></span>
+  </p>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
   <script>
     const src = "/video/index.m3u8";
@@ -15,6 +19,13 @@
     } else {
       v.src = src;
     }
+    document.getElementById("chk").onclick = async () => {
+      const r = await fetch("/video/seg_000.ts", { cache: "no-store" });
+      document.getElementById("out").textContent =
+        "X-Cache: " + r.headers.get("X-Cache") +
+        " | Hits: " + r.headers.get("X-Cache-Hits") +
+        " | Age: " + r.headers.get("Age") + "s";
+    };
   </script>
 </body>
 </html>
