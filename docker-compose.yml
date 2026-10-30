@@ -7,11 +7,27 @@ services:
       - ./origin/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./origin/www:/usr/share/nginx/html:ro
 
-  edge:
+  edge1:
     image: varnish:7.5
-    ports:
-      - "8080:80"
     volumes:
       - ./edge/default.vcl:/etc/varnish/default.vcl:ro
     depends_on:
       - origin
+
+  edge2:
+    image: varnish:7.5
+    volumes:
+      - ./edge/default.vcl:/etc/varnish/default.vcl:ro
+    depends_on:
+      - origin
+
+  lb:
+    image: haproxy:2.8
+    ports:
+      - "8080:8080"
+      - "8404:8404"
+    volumes:
+      - ./lb/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - edge1
+      - edge2

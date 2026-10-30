@@ -5,6 +5,13 @@ backend origin {
     .port = "80";
 }
 
+sub vcl_recv {
+    # Health check for the load balancer
+    if (req.url == "/healthz") {
+        return (synth(200, "OK"));
+    }
+}
+
 sub vcl_backend_response {
     # If origin goes down, keep serving cached copies for up to 1 hour
     set beresp.grace = 1h;
