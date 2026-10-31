@@ -3,6 +3,7 @@
 <head><meta charset="utf-8"><title>StreamEdge</title></head>
 <body>
   <h1>StreamEdge</h1>
+  <p>Video: <select id="pick"></select></p>
   <video id="v" controls width="640"></video>
   <p>
     <button id="chk">Check cache for segment 0</button>
@@ -10,22 +11,46 @@
   </p>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
   <script>
-    const src = "/video/index.m3u8";
     const v = document.getElementById("v");
-    if (Hls.isSupported()) {
-      const hls = new Hls();
-      hls.loadSource(src);
-      hls.attachMedia(v);
-    } else {
-      v.src = src;
+    const pick = document.getElementById("pick");
+    let hls = null;
+
+    function play(name) {
+      const src = "/video/" + name + "/index.m3u8";
+      if (hls) { hls.destroy(); hls = null; }
+      if (Hls.isSupported()) {
+        hls = new Hls();
+        hls.loadSource(src);
+        hls.attachMedia(v);
+      } else {
+        v.src = src;
+      }
     }
+
+    async function init() {
+      const r = await fetch("/videos.json", { cache: "no-store" });
+      const names = await r.json();
+      names.forEach(n => {
+        const o = document.createElement("option");
+        o.value = n;
+        o.textContent = n;
+        pick.appendChild(o);
+      });
+      if (names.length) play(names[0]);
+    }
+
+    pick.onchange = () => play(pick.value);
+
     document.getElementById("chk").onclick = async () => {
-      const r = await fetch("/video/seg_000.ts", { cache: "no-store" });
+      const r = await fetch("/video/" + pick.value + "/seg_000.ts", { cache: "no-store" });
       document.getElementById("out").textContent =
         "X-Cache: " + r.headers.get("X-Cache") +
         " | Hits: " + r.headers.get("X-Cache-Hits") +
-        " | Age: " + r.headers.get("Age") + "s";
+        " | Age: " + r.headers.get("Age") + "s" +
+        " | Edge: " + r.headers.get("X-Served-By");
     };
+
+    init();
   </script>
 </body>
 </html>

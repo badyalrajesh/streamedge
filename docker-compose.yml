@@ -9,6 +9,8 @@ services:
 
   edge1:
     image: varnish:7.5
+    ports:
+      - "127.0.0.1:8082:80"
     volumes:
       - ./edge/default.vcl:/etc/varnish/default.vcl:ro
     depends_on:
@@ -16,6 +18,8 @@ services:
 
   edge2:
     image: varnish:7.5
+    ports:
+      - "127.0.0.1:8083:80"
     volumes:
       - ./edge/default.vcl:/etc/varnish/default.vcl:ro
     depends_on:
