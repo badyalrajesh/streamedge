@@ -72,7 +72,7 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "haproxy_server_up{proxy=\"edges\"}",
+     "expr": "haproxy_server_status{proxy=\"edges\",state=\"UP\"}",
      "legendFormat": "{{server}}",
      "datasource": {
       "type": "prometheus",

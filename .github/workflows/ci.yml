@@ -119,7 +119,7 @@ jobs:
       - name: Test - both edges report healthy
         run: |
           for i in $(seq 1 15); do
-            up=$(curl -s http://localhost:8404/metrics | grep -c '^haproxy_server_up{proxy="edges",server="edge[12]"} 1' || true)
+            up=$(curl -s http://localhost:8404/metrics | grep -c '^haproxy_server_status{proxy="edges",server="edge[12]",state="UP"} 1' || true)
             if [ "$up" = "2" ]; then
               echo "both edges are UP"
               exit 0
