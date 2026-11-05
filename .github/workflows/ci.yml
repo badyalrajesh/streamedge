@@ -80,7 +80,7 @@ jobs:
           ffmpeg -loglevel error \
             -f lavfi -i testsrc=duration=12:size=320x180:rate=15 \
             -f lavfi -i sine=frequency=440:duration=12 \
-            -c:v libx264 -pix_fmt yuv420p -c:a aac \
+            -c:v libx264 -g 15 -keyint_min 15 -sc_threshold 0 -pix_fmt yuv420p -c:a aac \
             -f hls -hls_time 4 -hls_playlist_type vod \
             -hls_segment_filename origin/www/video/sample/seg_%03d.ts \
             origin/www/video/sample/index.m3u8
@@ -134,7 +134,7 @@ jobs:
           docker compose stop edge1
           sleep 8
           for i in 1 2 3 4 5 6; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/video/sample/seg_001.ts)
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/video/sample/seg_00$((i % 3)).ts)
             echo "request $i -> $code"
             test "$code" = "200"
           done
