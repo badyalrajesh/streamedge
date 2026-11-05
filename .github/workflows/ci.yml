@@ -118,8 +118,16 @@ jobs:
 
       - name: Test - both edges report healthy
         run: |
-          echo "Checking HAProxy metrics...."
-        curl -fsS http://localhost:8084/metrics | grep -E 'haproxy|edge1|edge2' || true
+          for i in $(seq 1 15); do
+            up=$(curl -s http://localhost:8404/metrics | grep -c '^haproxy_server_up{proxy="edges",server="edge[12]"} 1' || true)
+            if [ "$up" = "2" ]; then
+              echo "both edges are UP"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "edges are not healthy"
+          exit 1
 
       - name: Test - failover when one edge stops
         run: |
@@ -196,3 +204,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+EOF
