@@ -14,7 +14,7 @@ sub vcl_recv {
 
 sub vcl_backend_response {
     # If origin goes down, keep serving cached copies for up to 1 hour
-    set beresp.grace = 1h;
+    set beresp.grace = 2h;
 }
 
 sub vcl_deliver {
@@ -26,3 +26,4 @@ sub vcl_deliver {
     }
     set resp.http.X-Cache-Hits = obj.hits;
 }
+# test change

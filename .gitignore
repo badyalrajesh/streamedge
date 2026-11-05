@@ -16,3 +16,4 @@ watcher.log
 origin/www/videos.json
 watcher.log
 exporter.log
+.env

@@ -28,7 +28,7 @@
     }
 
     async function init() {
-      const r = await fetch("/videos.json", { cache: "no-store" });
+      const r = await fetch("/video/videos.json", { cache: "no-store" });
       const names = await r.json();
       names.forEach(n => {
         const o = document.createElement("option");

@@ -12,7 +12,7 @@ INCOMING = ROOT / "incoming"
 DONE = INCOMING / "done"
 FAILED = INCOMING / "failed"
 VIDEO_DIR = ROOT / "origin" / "www" / "video"
-VIDEOS_JSON = ROOT / "origin" / "www" / "videos.json"
+VIDEOS_JSON = ROOT / "origin" / "www" / "video" / "videos.json"
 POLL_SECONDS = 2
 
 
