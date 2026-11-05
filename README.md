@@ -1,3 +1,5 @@
+![CI](https://github.com/badyalrajesh/streamedge/actions/workflows/ci.yml/badge.svg)
+
 # StreamEdge - Step 1: Origin server with HLS video
 
 A mini CDN practice project. One NGINX origin serves a video that has been
