@@ -1,0 +1,206 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------
+  # 1. Check every config file before anything is built
+  # ---------------------------------------------------------------
+  validate:
+    name: Check configs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python scripts compile
+        run: python3 -m py_compile scripts/*.py
+
+      - name: Grafana dashboard is valid JSON
+        run: python3 -c "import json; json.load(open('monitoring/grafana/dashboards/streamedge.json'))"
+
+      - name: NGINX config
+        run: |
+          docker run --rm \
+            -v "$PWD/origin/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:1.27-alpine nginx -t
+
+      - name: HAProxy config
+        run: |
+          docker run --rm \
+            --add-host edge1:127.0.0.1 --add-host edge2:127.0.0.1 \
+            -v "$PWD/lb/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" \
+            haproxy:2.8 haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+
+      - name: Varnish config
+        run: |
+          docker run --rm \
+            --add-host origin:127.0.0.1 \
+            -v "$PWD/edge/default.vcl:/etc/varnish/default.vcl:ro" \
+            --entrypoint varnishd \
+            varnish:7.5 -C -f /etc/varnish/default.vcl -n /tmp/vtest > /dev/null
+
+      - name: Prometheus config
+        run: |
+          docker run --rm \
+            -v "$PWD/monitoring:/m:ro" \
+            --entrypoint promtool \
+            prom/prometheus:v2.53.0 check config /m/prometheus.yml
+
+      - name: Compose file
+        run: |
+          printf "HOST_UID=1000\nHOST_GID=1000\n" > .env
+          docker compose config -q
+
+  # ---------------------------------------------------------------
+  # 2. Start the real system and test it
+  # ---------------------------------------------------------------
+  smoke-test:
+    name: Run the system and test it
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make a tiny test video
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          mkdir -p origin/www/video/sample
+          ffmpeg -loglevel error \
+            -f lavfi -i testsrc=duration=12:size=320x180:rate=15 \
+            -f lavfi -i sine=frequency=440:duration=12 \
+            -c:v libx264 -pix_fmt yuv420p -c:a aac \
+            -f hls -hls_time 4 -hls_playlist_type vod \
+            -hls_segment_filename origin/www/video/sample/seg_%03d.ts \
+            origin/www/video/sample/index.m3u8
+
+      - name: Build and start origin, edges and load balancer
+        run: |
+          printf "HOST_UID=1000\nHOST_GID=1000\n" > .env
+          docker compose up -d --build origin edge1 edge2 lb
+
+      - name: Wait until the system answers
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://localhost:8080/video/sample/index.m3u8; then
+              echo "up after $i tries"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "system did not come up"
+          exit 1
+
+      - name: Test - segment is served and gets cached
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/video/sample/seg_000.ts)
+          echo "first request -> $code"
+          test "$code" = "200"
+          hits=0
+          for i in 1 2 3 4; do
+            if curl -sI http://localhost:8080/video/sample/seg_000.ts | grep -qi "^x-cache: HIT"; then
+              hits=$((hits+1))
+            fi
+          done
+          echo "cache hits out of 4 requests: $hits"
+          test "$hits" -ge 1
+
+      - name: Test - both edges report healthy
+        run: |
+          for i in $(seq 1 15); do
+            up=$(curl -s http://localhost:8404/metrics | grep -c '^haproxy_server_up{proxy="edges",server="edge[12]"} 1' || true)
+            if [ "$up" = "2" ]; then
+              echo "both edges are UP"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "edges are not healthy"
+          exit 1
+
+      - name: Test - failover when one edge stops
+        run: |
+          docker compose stop edge1
+          sleep 8
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/video/sample/seg_001.ts)
+            echo "request $i -> $code"
+            test "$code" = "200"
+          done
+
+      - name: Show logs if something failed
+        if: failure()
+        run: docker compose logs --no-color | tail -100
+
+  # ---------------------------------------------------------------
+  # 3. Build the images; publish them unless this is a pull request
+  # ---------------------------------------------------------------
+  publish:
+    name: Image ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    needs: [validate, smoke-test]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: origin
+            context: ./origin
+            file: ./origin/Dockerfile
+          - name: edge
+            context: ./edge
+            file: ./edge/Dockerfile
+          - name: lb
+            context: ./lb
+            file: ./lb/Dockerfile
+          - name: watcher
+            context: ./scripts
+            file: ./scripts/Dockerfile.watcher
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase the owner name (registry names must be lowercase)
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Work out the image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ env.OWNER }}/streamedge-${{ matrix.name }}
+          tags: |
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+
+      - name: Build (and push, except on pull requests)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
