@@ -1,0 +1,72 @@
+# Managed by Ansible. Do not edit by hand: change it in ansible/templates/
+services:
+  origin:
+    image: ghcr.io/{{ ghcr_owner }}/streamedge-origin:{{ image_tag }}
+    ports:
+      - "8081:80"
+    volumes:
+      - {{ install_dir }}/video:/usr/share/nginx/html/video:ro
+    restart: unless-stopped
+
+  edge1:
+    image: ghcr.io/{{ ghcr_owner }}/streamedge-edge:{{ image_tag }}
+    ports:
+      - "127.0.0.1:8082:80"
+    depends_on:
+      - origin
+    restart: unless-stopped
+
+  edge2:
+    image: ghcr.io/{{ ghcr_owner }}/streamedge-edge:{{ image_tag }}
+    ports:
+      - "127.0.0.1:8083:80"
+    depends_on:
+      - origin
+    restart: unless-stopped
+
+  lb:
+    image: ghcr.io/{{ ghcr_owner }}/streamedge-lb:{{ image_tag }}
+    ports:
+      - "8080:8080"
+      - "8404:8404"
+    depends_on:
+      - edge1
+      - edge2
+    restart: unless-stopped
+
+  watcher:
+    image: ghcr.io/{{ ghcr_owner }}/streamedge-watcher:{{ image_tag }}
+    user: "{{ streamedge_uid }}:{{ streamedge_gid }}"
+    volumes:
+      - {{ install_dir }}/incoming:/app/incoming
+      - {{ install_dir }}/video:/app/origin/www/video
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - lb
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prom_data:
+  grafana_data:

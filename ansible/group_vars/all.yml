@@ -1,0 +1,12 @@
+# Your GitHub username in lowercase (where the images were published)
+ghcr_owner: badyalrajesh
+
+# Which image version to deploy: latest, v1.0.0, sha-1a2b3c4 ...
+image_tag: latest
+
+# Where StreamEdge lives on the target machine
+install_dir: /opt/streamedge
+
+# The unprivileged user the watcher container runs as
+streamedge_uid: 1500
+streamedge_gid: 1500

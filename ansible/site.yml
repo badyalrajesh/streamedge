@@ -1,0 +1,134 @@
+---
+- name: Deploy StreamEdge
+  hosts: streamedge
+  become: true
+
+  tasks:
+    # ---------- 1. The machine itself ----------
+    - name: Install Docker and tools
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+          - curl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Docker starts at boot and is running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Group for the StreamEdge services
+      ansible.builtin.group:
+        name: streamedge
+        gid: "{{ streamedge_gid }}"
+        state: present
+
+    - name: User for the StreamEdge services
+      ansible.builtin.user:
+        name: streamedge
+        uid: "{{ streamedge_uid }}"
+        group: streamedge
+        shell: /usr/sbin/nologin
+        create_home: false
+        state: present
+
+    # ---------- 2. Folders and files ----------
+    - name: Create the install folders
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.owner }}"
+        mode: "0755"
+      loop:
+        - { path: "{{ install_dir }}", owner: root }
+        - { path: "{{ install_dir }}/scripts", owner: root }
+        - { path: "{{ install_dir }}/incoming", owner: streamedge }
+        - { path: "{{ install_dir }}/video", owner: streamedge }
+
+    - name: Copy the Prometheus and Grafana config
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../monitoring/"
+        dest: "{{ install_dir }}/monitoring/"
+        owner: root
+        group: root
+        mode: "0644"
+        directory_mode: "0755"
+
+    - name: Copy the exporter script
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/exporter.py"
+        dest: "{{ install_dir }}/scripts/exporter.py"
+        owner: root
+        group: root
+        mode: "0755"
+      notify: Restart exporter
+
+    - name: Write docker-compose.yml
+      ansible.builtin.template:
+        src: docker-compose.yml.j2
+        dest: "{{ install_dir }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    # ---------- 3. The exporter as a system service ----------
+    - name: Write the exporter service file
+      ansible.builtin.template:
+        src: streamedge-exporter.service.j2
+        dest: /etc/systemd/system/streamedge-exporter.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd
+        - Restart exporter
+
+    - name: Apply the pending service changes now
+      ansible.builtin.meta: flush_handlers
+
+    - name: Exporter starts at boot and is running
+      ansible.builtin.systemd:
+        name: streamedge-exporter
+        enabled: true
+        state: started
+
+    # ---------- 4. The containers ----------
+    - name: Pull the images and start the stack
+      ansible.builtin.command:
+        cmd: docker compose --progress plain up -d --pull always --remove-orphans
+        chdir: "{{ install_dir }}"
+      register: compose_up
+      changed_when: (compose_up.stdout + compose_up.stderr) is search('Created|Started|Recreated')
+
+    - name: Wait until the site answers through the load balancer
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/
+        status_code: 200
+      register: site
+      until: site.status == 200
+      retries: 20
+      delay: 3
+
+    - name: Done
+      ansible.builtin.debug:
+        msg:
+          - "Player:     http://localhost:8080"
+          - "Grafana:    http://localhost:3000"
+          - "HAProxy:    http://localhost:8404"
+          - "Version:    {{ image_tag }}"
+          - "Add videos: copy an .mp4 into {{ install_dir }}/incoming"
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart exporter
+      ansible.builtin.systemd:
+        name: streamedge-exporter
+        state: restarted
