@@ -1,0 +1,67 @@
+# Videos live on a persistent volume, shared by the origin and the watcher
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: video
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: origin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: origin
+  template:
+    metadata:
+      labels:
+        app: origin
+    spec:
+      containers:
+        - name: nginx
+          image: ghcr.io/badyalrajesh/streamedge-origin
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: video
+              mountPath: /usr/share/nginx/html/video
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: video
+          persistentVolumeClaim:
+            claimName: video
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: origin
+spec:
+  selector:
+    app: origin
+  ports:
+    - port: 80
+      targetPort: 80
