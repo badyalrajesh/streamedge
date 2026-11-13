@@ -49,7 +49,8 @@ def convert(src):
     cmd = [
         "ffmpeg", "-loglevel", "error",
         "-i", str(src),
-        "-c:v", "libx264", "-c:a", "aac",
+        "-c:v", "libx264","-preset","ultrafast" 
+        "-threads","1","-c:a", "aac",
         "-f", "hls", "-hls_time", "4", "-hls_playlist_type", "vod",
         "-hls_segment_filename", str(tmp_dir / "seg_%03d.ts"),
         str(tmp_dir / "index.m3u8"),
