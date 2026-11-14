@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: streamedge
+
+resources:
+  - namespace.yaml
+  - origin.yaml
+  - edge.yaml
+  - lb.yaml
+  - watcher.yaml
+  - prometheus.yaml
+  - grafana.yaml
+
+# Config files become ConfigMaps. Kustomize adds a hash to each name, so
+# changing a file makes the pods that use it restart by themselves.
+configMapGenerator:
+  - name: haproxy-config
+    files:
+      - haproxy.cfg=config/haproxy.cfg
+  - name: prometheus-config
+    files:
+      - prometheus.yml=config/prometheus.yml
+  - name: grafana-datasources
+    files:
+      - datasource.yml=config/grafana-datasource.yml
+  - name: grafana-dashboard-provider
+    files:
+      - dashboards.yml=config/grafana-dashboards.yml
+  - name: grafana-dashboards
+    files:
+      - streamedge.json=config/streamedge.json
+
+# Which version of each image to run. Change newTag to deploy another version.
+images:
+  - name: ghcr.io/badyalrajesh/streamedge-origin
+    newTag: latest
+  - name: ghcr.io/badyalrajesh/streamedge-edge
+    newTag: latest
+  - name: ghcr.io/badyalrajesh/streamedge-lb
+    newTag: latest
+  - name: ghcr.io/badyalrajesh/streamedge-watcher
+    newTag: latest
+  - name: ghcr.io/badyalrajesh/streamedge-exporter
+    newTag: latest

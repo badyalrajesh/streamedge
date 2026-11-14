@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lb
+  template:
+    metadata:
+      labels:
+        app: lb
+    spec:
+      containers:
+        - name: haproxy
+          image: ghcr.io/badyalrajesh/streamedge-lb
+          ports:
+            - name: web
+              containerPort: 8080
+            - name: stats
+              containerPort: 8404
+          volumeMounts:
+            - name: haproxy-config
+              mountPath: /usr/local/etc/haproxy
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8404
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8404
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: haproxy-config
+          configMap:
+            name: haproxy-config
+---
+# type LoadBalancer: k3s opens these ports on the VM itself, so your
+# VirtualBox rules for 8080 and 8404 keep working
+apiVersion: v1
+kind: Service
+metadata:
+  name: lb
+spec:
+  type: LoadBalancer
+  selector:
+    app: lb
+  ports:
+    - name: web
+      port: 8080
+      targetPort: 8080
+    - name: stats
+      port: 8404
+      targetPort: 8404

@@ -1,0 +1,75 @@
+# Two Varnish edges. Each pod also runs an exporter container beside Varnish.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edge
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: edge
+  template:
+    metadata:
+      labels:
+        app: edge
+    spec:
+      containers:
+        - name: varnish
+          image: ghcr.io/badyalrajesh/streamedge-edge
+          env:
+            - name: VARNISH_SIZE
+              value: "64M"
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: varnish-work
+              mountPath: /var/lib/varnish
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+        - name: exporter
+          image: ghcr.io/badyalrajesh/streamedge-exporter
+          ports:
+            - containerPort: 9100
+          volumeMounts:
+            - name: varnish-work
+              mountPath: /var/lib/varnish
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: varnish-work
+          emptyDir: {}
+---
+# "Headless" service (clusterIP: None): DNS returns every edge pod's own
+# address. HAProxy and Prometheus use this to find the edges.
+apiVersion: v1
+kind: Service
+metadata:
+  name: edge
+spec:
+  clusterIP: None
+  selector:
+    app: edge
+  ports:
+    - name: http
+      port: 80
+    - name: metrics
+      port: 9100

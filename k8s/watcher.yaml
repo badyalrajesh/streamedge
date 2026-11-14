@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: incoming
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: watcher
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: watcher
+  template:
+    metadata:
+      labels:
+        app: watcher
+    spec:
+      securityContext:
+        runAsUser: 1500
+        runAsGroup: 1500
+        fsGroup: 1500
+      containers:
+        - name: watcher
+          image: ghcr.io/badyalrajesh/streamedge-watcher
+          volumeMounts:
+            - name: incoming
+              mountPath: /app/incoming
+            - name: video
+              mountPath: /app/origin/www/video
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: incoming
+          persistentVolumeClaim:
+            claimName: incoming
+        - name: video
+          persistentVolumeClaim:
+            claimName: video
